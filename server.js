@@ -1,21 +1,18 @@
-// Plik: server.js (WERSJA DLA RENDER.COM)
+// Plik: server.js (WERSJA OSTATECZNA - ZAPIS W PAMIĘCI)
 
 const express = require('express');
 const cors = require('cors');
-const fs = require('fs').promises;
-const path = require('path');
 
 const app = express();
-const PORT = process.env.PORT || 10000; // Render używa portu 10000
+const PORT = process.env.PORT || 10000;
 
 app.use(cors());
 app.use(express.text({ type: '*/*' }));
 
-// Render udostępnia trwały dysk w tej ścieżce
-const LOG_DIR = process.env.RENDER_DISK_PATH || __dirname;
-const logFilePath = path.join(LOG_DIR, 'form_events.log');
+// Zamiast pliku, będziemy trzymać dane w prostej tablicy w pamięci RAM.
+let eventsDatabase = [];
 
-// ENDPOINT 1: Odbieranie danych ze skryptu śledzącego
+// ENDPOINT 1: Odbieranie danych
 app.post('/api/track', async (req, res) => {
   try {
     const eventData = JSON.parse(req.body); 
@@ -23,9 +20,8 @@ app.post('/api/track', async (req, res) => {
     
     console.log('Received event:', eventData);
 
-    const logEntry = JSON.stringify(eventData) + '\n';
-    // Używamy fs.appendFile do zapisu na trwałym dysku Render
-    await fs.appendFile(logFilePath, logEntry);
+    // Dodajemy nowe zdarzenie do naszej "bazy danych" w pamięci
+    eventsDatabase.push(eventData);
 
     res.status(200).json({ message: 'Event received' });
   } catch (error) {
@@ -34,19 +30,19 @@ app.post('/api/track', async (req, res) => {
   }
 });
 
-// ENDPOINT 2: Serwowanie danych do dashboardu
+// ENDPOINT 2: Serwowanie danych
 app.get('/api/data', async (req, res) => {
   try {
-    const data = await fs.readFile(logFilePath, 'utf8');
-    let events = data.split('\n').filter(line => line.trim() !== '').map(line => JSON.parse(line));
+    // Klonujemy tablicę, żeby uniknąć modyfikacji oryginalnych danych
+    let events = [...eventsDatabase];
     
+    // Reszta Twojej logiki pozostaje IDENTYCZNA
     const allFormIds = [...new Set(events.map(e => e.form_id))];
     const requestedFormId = req.query.formId;
     if (requestedFormId) {
         events = events.filter(e => e.form_id === requestedFormId);
     }
 
-    // Twoja oryginalna logika przetwarzania - jest w porządku
     const uniqueUsers = new Set(events.map(e => e.user_id));
     const formSessions = new Set();
     const submissions = new Set();
@@ -54,6 +50,7 @@ app.get('/api/data', async (req, res) => {
     const fieldInteractions = {};
     const topAbandonmentFields = {};
     const validationErrors = {};
+    // ... i tak dalej, cała reszta logiki
     const uniqueStarters = new Set();
     const uniqueSubmitters = new Set();
     const sessionStartTimes = new Map();
@@ -100,22 +97,25 @@ app.get('/api/data', async (req, res) => {
         fieldInteractions: sortObjectByValue(fieldInteractions), topAbandonmentFields: sortObjectByValue(topAbandonmentFields), validationErrors: sortObjectByValue(validationErrors)
       }
     };
+
+    // Zwracamy puste dane jeśli nic nie ma w pamięci
+    if (events.length === 0) {
+        const emptyData = { allFormIds: [], kpis: { totalUniqueUsers: 0, starts: 0, submissions: 0, abandonments: 0, conversionRate: 0, uniqueStarters: 0, uniqueSubmitters: 0, avgTimeToSubmit: 0 }, charts: { fieldInteractions: {}, topAbandonmentFields: {}, validationErrors: {} } };
+        return res.json(emptyData);
+    }
+    
     res.json(responseData);
   } catch (error) {
-    if (error.code === 'ENOENT') {
-      const emptyData = { allFormIds: [], kpis: { totalUniqueUsers: 0, starts: 0, submissions: 0, abandonments: 0, conversionRate: 0, uniqueStarters: 0, uniqueSubmitters: 0, avgTimeToSubmit: 0 }, charts: { fieldInteractions: {}, topAbandonmentFields: {}, validationErrors: {} } };
-      return res.json(emptyData);
-    }
     console.error('Error in /api/data:', error);
     res.status(500).json({ message: 'Internal Server Error' });
   }
 });
 
-// ENDPOINT 3: Serwowanie pliku HTML dashboardu
+// ENDPOINT 3: Serwowanie HTML dashboardu (bez zmian)
 app.get('/', (req, res) => {
-  // Wklejamy tu ten sam kod HTML co ostatnio (wersja czytelna)
   res.send(`
   <!DOCTYPE html>
+  <!-- CAŁY KOD TWOJEGO DASHBOARDU HTML/CSS/JS TUTAJ, TAK JAK WCZEŚNIEJ -->
   <html lang="pl">
   <head>
       <meta charset="UTF-8">
